@@ -26,7 +26,7 @@
    echo 'export TURTLEBOT3_MODEL=burger' >> ~/.zshrc
    source ~/.zshrc
 
-   # Instalar dependencias necesarias (solo la primera vez)
+   # Instalar dependencias necesarias
    sudo apt update
    sudo apt install ros-humble-turtlebot3 ros-humble-turtlebot3-simulations ros-humble-turtlebot3-gazebo
 
@@ -57,7 +57,7 @@
 
 ## Descripción del proyecto
 
-Este proyecto implementa un **Filtro de Kalman Extendido (EKF)** en ROS 2 para estimar el estado de un robot móvil (TurtleBot3) usando odometría (como “verdad” a la que se le añade ruido) y datos de IMU simulada. Se proponen tres modelos de estado de complejidad creciente:
+Este proyecto implementa un **Filtro de Kalman Extendido (EKF)** en ROS 2 para estimar el estado de un robot móvil (TurtleBot3) usando odometría y datos de IMU simulada. Se proponen tres modelos de estado de complejidad creciente:
 
 1. **Modelo 3D**
 
@@ -111,49 +111,38 @@ En carpetas auxiliares:
 
    * Se convierte el mensaje ROS (`nav_msgs/Odometry`) a un vector de pose 2D $x,y,θ$.
    * Para 7D/8D, se extrae la velocidad lineal y angular estimada por odometría (para generar la observación parcial).
-   * Se añade **ruido** (según configuración actual) a la observación.
+   * Se añade **ruido** a la observación.
    * Se construye el vector de control u (velocidad lineal y angular).
    * Se invoca `kf.predict(u, dt)` y luego `kf.update(z, dt)`.
 
 3. **Callback de IMU** (`imu_callback`) *(solo 7D y 8D)*
 
    * Se procesa `sensor_msgs/Imu` para obtener lecturas de aceleración y giroscopio.
-   * Se filtran/trasforman según el modelo (por ejemplo, rotar las aceleraciones al marco base).
+   * Se filtran/trasforman según el modelo.
    * Se añade ruido de IMU según configuración.
-   * Se usan estas lecturas dentro de la corrección del EKF (parte de z cuando el nodo fusiona IMU).
+   * Se usan estas lecturas dentro de la corrección del EKF.
 
 4. **Predict**
 
    * Llamada interna a `g(μ_{k-1}, u_k, dt)` para obtener μₖ|ₖ₋₁.
    * Jacobiano G = ∂g/∂μ evaluado en μₖ₋₁.
-   * Actualización de covarianza:
-
-     $$
-       Σₖ|ₖ₋₁ = G\,Σₖ₋₁\,Gᵀ + V\,R\,Vᵀ
-     $$
-
-     donde V = ∂g/∂u y R es la covarianza de ruido de proceso.
+   * Actualización de covarianza: Σₖ|ₖ₋₁ = G\,Σₖ₋₁\,Gᵀ + V\,R\,Vᵀ donde V = ∂g/∂u y R es la covarianza de ruido de proceso.
 
 5. **Update**
 
-   * Se calcula la predicción de medida h(μₖ|ₖ₋₁) (en 3D, solo mapa pose → pose; en 7D/8D, incluye IMU).
+   * Se calcula la predicción de medida h(μₖ|ₖ₋₁).
    * Jacobiano H = ∂h/∂μ evaluado en μₖ|ₖ₋₁.
-   * Ganancia de Kalman:
-
-     $$
-       K = Σₖ|ₖ₋₁\,Hᵀ \,igl(H\,Σₖ|ₖ₋₁\,Hᵀ + Q\bigr)^{-1}
-     $$
    * Estado corregido: μₖ = μₖ|ₖ₋₁ + K(zₖ − h(μₖ|ₖ₋₁)).
    * Covarianza actualizada: Σₖ = (I − K,H)Σₖ|ₖ₋₁.
 
 6. **Visualización y registro**
 
    * Cada paso proyecta la trayectoria real (odometría ruidosa) en RViz y la estimación (posición de μₖ).
-   * Se guardan las trayectorias en arrays para generar, al finalizar, gráficos de matplotlib que muestran:
+   * Se guardan las trayectorias en arrays para generar, al finalizar, gráficos que muestran:
 
-     * **Ground truth** (trayectoria limpia de odometría original sin ruido o con solo el “ruido base”).
+     * **Ground truth** (trayectoria limpia de odometría original sin ruido).
      * **Observaciones** (odometría ruidosa/IMU ruidosa).
-     * **Estimación EKF** (línea corrugada azul).
+     * **Estimación EKF** (estimación).
 
 ---
 
@@ -193,69 +182,15 @@ Para evaluar el comportamiento de los tres modelos (3D, 7D y 8D) se realizaron *
 
      * La estimación tiende a “pegarse” a la observación (incluso si ésta es ruidosa), generando trayectorias con más fluctuaciones similares a los datos medidos.
      * El modelo 3D, al ser más simple, sigue mejor la medición de odometría con ruido .
-     * En los casos 7D/8D, al confiar en IMU + odometría, la trayectoria estimada ronda de cerca a la observada, pero se nota jitter cuando hay cambios rápidos.
+     * En los casos 7D/8D, al confiar en IMU + odometría, la trayectoria estimada ronda de cerca a la observada.
    * Gráficas obtenidas:
 
      * `alto_proc_3D.png`
      * `alto_proc_7D.png`
      * `alto_proc_8D.png`
 
----
 
-## Análisis de resultados
 
-### 1. Caso base (valores de ruido por defecto)
-
-* **3D**:
-
-  * Con valores aleatorios sin tuning, la trayectoria estimada (línea azul) aparece algo desalineada respecto a la trayectoria real (verde) y las observaciones (rojo).
-  * Hay periodos en los que el EKF sigue bien la trayectoria, pero en giros pronunciados la predicción se desvía.
-* **7D y 8D**:
-
-  * Al incorporar IMU y estimación de velocidades/sesgos, se esperaba una mejor adaptación, pero al no haber ajustado correctamente R y Q, la fusión sensorial funciona de forma inconsistente.
-  * Se ven picos y oscilaciones tanto en el espacio XY como en la componente angular.
-
-**Conclusión:** El tuning de los covarianzas es vital. Con valores arbitrarios, los filtros no logran converger.
-
----
-
-### 2. Ruido alto en la medida (observación)
-
-* **Concepto:**
-
-  * Incrementar Q hace que el EKF desconfíe de la medida.
-  * Da por bueno el modelo de movimiento (g(·)) y “suaviza” las correcciones.
-* **3D**:
-
-  * La trayectoria estimada (azul) se aleja de las mediciones rojas y verde (ground truth), mostrando retardo en curvas y una forma más “poligonal” dominada por g(·).
-  * En curvas pronunciadas, el modelo de movimiento 3D introduce un sesgo notable porque no dispone de información correcta de posición instantánea.
-* **7D y 8D**:
-
-  * Al confiar en el modelo de movimiento que integra velocidades, la trayectoria predicha se “aleja” en espacios no lineales.
-  * El sesgo de predicción persiste hasta que la corrección de medida (poco confiable) entra de forma limitada.
-
-**Conclusión:**
-Cuando Q ≫ R, el filtro deja de corregir con las mediciones. Si el modelo de transición no es exacto, la estimación derivada se deteriora y pierde correspondencia con la trayectoria real.
-
----
-
-### 3. Ruido alto en el proceso (modelo)
-
-* **Concepto:**
-
-  * Aumentar R hace al EKF “creer” menos en la predicción basada en g(·).
-  * Entonces, confía casi por completo en las observaciones (odom/IMU).
-* **3D**:
-
-  * La estimación (azul) se adhiere a las observaciones rojas con un ligero jitter, pues el modelo 3D no es capaz de “suavizar” totalmente sin fiarse de g(·).
-  * Durante giros, la trayectoria predicha sigue muy de cerca la trayectoria ruidosa.
-* **7D y 8D**:
-
-  * El EKF toma con prioridad los datos de odometría e IMU y, al descartar casi por completo g(·), la estimación absorbe la mayoría del ruido de los sensores.
-  * Sin embargo, como el modelo linealizado de transición (g(·)) queda relegado, la trayectoria azul se superpone casi a la roja, introduciendo oscilaciones similares a las observaciones.
-
-**Conclusión:**
-Cuando R ≫ Q, el filtro tiende a “pasar” el ruido del sensor directamente a la estimación, perdiendo la ventaja de predicción del modelo. Esto es útil solo si se confía plenamente en las mediciones y se busca seguimiento “rápido” pero ruidoso.
 
 
 
