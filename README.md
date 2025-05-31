@@ -62,7 +62,7 @@ Este proyecto implementa un **Filtro de Kalman Extendido (EKF)** en ROS 2 para e
 1. **Modelo 3D**
 
    * Estado: $x, y, θ$.
-   * Únicamente se usa odometría (pose) como observación ruidosa.
+   * Únicamente se usa odometría como observación ruidosa.
    * Implementado en `ekf_estimation_3d.py` dentro de la raíz del paquete.
 
 2. **Modelo 7D**
@@ -77,10 +77,10 @@ Este proyecto implementa un **Filtro de Kalman Extendido (EKF)** en ROS 2 para e
    * Fusiona odometría + IMU + corrección de sesgos tanto de acelerómetro como de giroscopio.
    * Implementado en `ekf_estimation_8d.py`.
 
-El nodo genérico de EKF (`kf_node.py`) define la lógica base de suscripción y publicación en ROS 2, así como los pasos de predicción y corrección del EKF. Cada script `ekf_estimation_<nd>.py` extiende esa clase base para configurar:
+El nodo genérico de EKF (`kf_node.py`) define la lógica base de suscripción y publicación en ROS 2, así como los pasos de predicción y corrección del EKF. Cada script `ekf_estimation_<mod>.py` extiende esa clase base para configurar:
 
-* **Modelos de transición (g(·) y sus jacobianos)** en `motion_models/`.
-* **Modelos de observación (h(·) y sus jacobianos)** en `observation_models/`.
+* **Modelos de transición (g() y sus jacobianos)** en `motion_models`.
+* **Modelos de observación (h() y sus jacobianos)** en `observation_models`.
 * **Parámetros de ruido de proceso (R)** y **ruido de observación (Q)**.
 
 En carpetas auxiliares:
@@ -90,12 +90,11 @@ En carpetas auxiliares:
   * `predict(self, u, dt)`: predicción no lineal con Jacobiano del modelo de movimiento.
   * `update(self, z, dt)`: corrección no lineal con Jacobiano del modelo de observación.
 * `motion_models/velocity_motion_models.py` (u otros archivos en esa carpeta) definen `g(μ,u,dt)` y las funciones para calcular jacobianos **G** (respecto al estado) y **V** (respecto al control).
-* `observation_models/` define las funciones `h(μ)` y Jacobiano **H(μ)** para cada modelo (solo pose, pose+velocidades, etc.).
-* `common_utils/` incluye utilidades genéricas:
+* `observation_models` define las funciones `h(μ)` y Jacobiano **H(μ)** para cada modelo (solo pose, pose+velocidades, etc.).
+* `common_utils` incluye utilidades genéricas:
 
   * Conversión de mensajes ROS a vectores de estado.
   * Funciones para añadir ruido gaussiano a odometría/IMU.
-  * Visualización en RViz y matplotlib (para generar las gráficas offline).
 
 ---
 
@@ -105,12 +104,11 @@ En carpetas auxiliares:
    * Se define el estado inicial (μ₀) y covarianza (Σ₀).
    * Se configuran los parámetros de ruido (desviaciones estándar) para proceso (**R**) y observación (**Q**).
    * Se crea la instancia de `ExtendedKalmanFilter` con los modelos correspondientes (g, G, V, h, H).
-   * Se lanza un visualizador en RViz y se guarda un buffer para las gráficas offline (matplotlib).
 
 2. **Callback de odometría** (`odom_callback`)
 
    * Se convierte el mensaje ROS (`nav_msgs/Odometry`) a un vector de pose 2D $x,y,θ$.
-   * Para 7D/8D, se extrae la velocidad lineal y angular estimada por odometría (para generar la observación parcial).
+   * Para 7D/8D, se extrae la velocidad lineal y angular estimada por odometría.
    * Se añade **ruido** a la observación.
    * Se construye el vector de control u (velocidad lineal y angular).
    * Se invoca `kf.predict(u, dt)` y luego `kf.update(z, dt)`.
