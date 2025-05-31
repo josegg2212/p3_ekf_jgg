@@ -22,14 +22,6 @@
 3. **Lanzar el simulador de TurtleBot3**
 
    ```bash
-   # Si no tienes configuradas las variables de TurtleBot3
-   echo 'export TURTLEBOT3_MODEL=burger' >> ~/.zshrc
-   source ~/.zshrc
-
-   # Instalar dependencias necesarias
-   sudo apt update
-   sudo apt install ros-humble-turtlebot3 ros-humble-turtlebot3-simulations ros-humble-turtlebot3-gazebo
-
    # Lanzar mundo de Gazebo con TurtleBot3
    ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
    ```
